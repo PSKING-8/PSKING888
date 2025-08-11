@@ -1,11 +1,290 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="hu">
 <head>
-<meta charset="UTF-8" />
-<title>PSKING Play World</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>PSKING PLAY — Auto PSKING (Szebb verzió)</title>
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/loaders/babylon.glTF2FileLoader.min.js"></script>
+<style>
+  :root{--bg:#0b1220;--panel:#0f1724;--accent:#ffcc00}
+  html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Arial;background:linear-gradient(180deg,#0b1220,#102033);color:#eef;display:flex;align-items:center;justify-content:center}
+  .wrap{width:100%;max-width:1100px;margin:20px;padding:18px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;box-shadow:0 6px 30px rgba(0,0,0,0.6)}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  header h1{margin:0;font-size:20px;letter-spacing:1px}
+  .cols{display:flex;gap:18px}
+  .panel{flex:1;min-width:280px;background:rgba(255,255,255,0.02);padding:14px;border-radius:10px}
+  label{display:block;margin:10px 0 6px;font-size:14px;color:#cfe}
+  input[type=text], input[type=number]{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color: #eef}
+  button{margin-top:12px;padding:10px 14px;border-radius:8px;border:0;background:var(--accent);color:#081018;font-weight:700;cursor:pointer}
+  #menu{display:none}
+  #gameContainer{display:none;position:relative;height:600px;border-radius:10px;overflow:hidden;margin-top:12px}
+  canvas{width:100%;height:100%;display:block}
+  .hud{position:absolute;left:12px;top:12px;background:rgba(0,0,0,0.35);padding:8px 10px;border-radius:8px}
+  .hint{font-size:13px;opacity:0.9}
+  .small{font-size:13px;color:#cfe;opacity:0.95}
+</style>
 </head>
 <body>
-<h1>Welcome to PSKING Play World</h1>
-<button onclick="window.location.href='psking_race.html'">Játék indítása</button>
+<div class="wrap">
+  <header>
+    <img src="" alt="" style="width:48px;height:48px;border-radius:8px;background:linear-gradient(90deg,#222,#111)"/>
+    <h1>PSKING PLAY — Auto PSKING (Szebb verzió)</h1>
+  </header>
+
+  <div class="cols">
+    <div class="panel" id="loginPanel">
+      <h2>Belépés</h2>
+      <label for="playerName">Játékos név</label>
+      <input id="playerName" type="text" placeholder="Írd ide a neved (pl. PSKING_DAVID)"/>
+      <label for="playerAge">Életkor</label>
+      <input id="playerAge" type="number" min="6" max="99" placeholder="Életkor"/>
+      <div style="display:flex;gap:8px;">
+        <button id="enterBtn">Belépés</button>
+        <button id="clearBtn" style="background:#888;color:#fff">Törlés</button>
+      </div>
+      <p class="small">A név és életkor elmentődik a böngészőben, hogy legközelebb gyorsabban beléphess.</p>
+    </div>
+
+    <div class="panel" id="menu">
+      <h2>Főmenü</h2>
+      <p class="small" id="welcomeText"></p>
+      <button id="startGameBtn">Auto PSKING — Indítás</button>
+      <p class="hint">Játékmenet: nyilak vagy WASD a vezetéshez. Cél: kapd el a piros "tolvaj" autót!</p>
+    </div>
+  </div>
+
+  <div id="gameContainer">
+    <div class="hud" id="hud">
+      <div><strong id="hudName"></strong> <span class="small" id="hudAge"></span></div>
+      <div style="margin-top:6px">Pontok: <span id="score">0</span></div>
+      <div style="margin-top:6px" class="small">Gáz: <span id="speedDisplay">0</span></div>
+    </div>
+    <canvas id="renderCanvas"></canvas>
+  </div>
+
+</div>
+
+<script>
+/* --- UI logic --- */
+const enterBtn = document.getElementById('enterBtn');
+const clearBtn = document.getElementById('clearBtn');
+const menu = document.getElementById('menu');
+const loginPanel = document.getElementById('loginPanel');
+const startGameBtn = document.getElementById('startGameBtn');
+const playerNameInput = document.getElementById('playerName');
+const playerAgeInput = document.getElementById('playerAge');
+const welcomeText = document.getElementById('welcomeText');
+const hudName = document.getElementById('hudName');
+const hudAge = document.getElementById('hudAge');
+const scoreEl = document.getElementById('score');
+const speedDisplay = document.getElementById('speedDisplay');
+
+function loadSaved(){
+  const n = localStorage.getItem('psking_name');
+  const a = localStorage.getItem('psking_age');
+  if(n) playerNameInput.value = n;
+  if(a) playerAgeInput.value = a;
+}
+loadSaved();
+
+enterBtn.onclick = () => {
+  const name = playerNameInput.value.trim();
+  const age = parseInt(playerAgeInput.value);
+  if(!name || !age || age < 6 || age > 120){
+    alert('Adj meg egy érvényes nevet és életkort (6-120).');
+    return;
+  }
+  localStorage.setItem('psking_name', name);
+  localStorage.setItem('psking_age', age);
+  welcomeText.textContent = `Üdv, ${name}! Életkor: ${age}. Válassz játékot a menüből.`;
+  hudName.textContent = name;
+  hudAge.textContent = `(${age} év)`;
+  loginPanel.style.display = 'none';
+  menu.style.display = 'block';
+};
+
+clearBtn.onclick = () => {
+  localStorage.removeItem('psking_name');
+  localStorage.removeItem('psking_age');
+  playerNameInput.value = '';
+  playerAgeInput.value = '';
+  alert('Adatok törölve.');
+};
+
+/* --- Babylon.js játék --- */
+startGameBtn.onclick = startGame;
+
+let engine, scene, camera, player, inputMap = {}, score = 0;
+let speed = 0;
+function startGame(){
+  document.getElementById('gameContainer').style.display = 'block';
+  menu.style.display = 'none';
+  const canvas = document.getElementById('renderCanvas');
+  engine = new BABYLON.Engine(canvas, true, {preserveDrawingBuffer:true, stencil:true});
+  scene = new BABYLON.Scene(engine);
+  scene.clearColor = new BABYLON.Color3(0.53,0.78,0.92); // világoskék ég
+
+  // Camera
+  camera = new BABYLON.UniversalCamera('cam', new BABYLON.Vector3(0,5,-12), scene);
+  camera.attachControl(canvas, true);
+  camera.speed = 0.5;
+  camera.minZ = 0.1;
+
+  // Light
+  const sun = new BABYLON.DirectionalLight("sun", new BABYLON.Vector3(-0.5,-1,0.3), scene);
+  sun.intensity = 1.2;
+
+  // Ground / road
+  const ground = BABYLON.MeshBuilder.CreateGround('g', {width:200, height:40}, scene);
+  ground.position.z = 100;
+  const roadMat = new BABYLON.StandardMaterial('roadMat', scene);
+  roadMat.diffuseColor = new BABYLON.Color3(0.08,0.08,0.08);
+  ground.material = roadMat;
+
+  // Road stripes
+  for(let i=0;i<40;i++){
+    const stripe = BABYLON.MeshBuilder.CreateBox('s'+i,{width:1,height:0.1,depth:4},scene);
+    stripe.position = new BABYLON.Vector3(0,0.01,i*5);
+    const sm = new BABYLON.StandardMaterial('sm'+i,scene);
+    sm.emissiveColor = new BABYLON.Color3(1,1,0.6);
+    stripe.material = sm;
+  }
+
+  // Player car - GLB modell betöltése
+  player = new BABYLON.TransformNode("player", scene);
+  BABYLON.SceneLoader.ImportMesh("", "https://models.babylonjs.com/", "lambo_huracan.glb", scene, function(meshes) {
+    const car = meshes[0];
+    car.parent = player;
+    player.position = new BABYLON.Vector3(0,0,2);
+    car.scaling = new BABYLON.Vector3(0.04, 0.04, 0.04);
+  });
+
+  // Fák az út mellett
+  const treeMeshes = [];
+  function createTree(x,z){
+    const trunk = BABYLON.MeshBuilder.CreateCylinder("trunk",{diameter:0.3,height:2},scene);
+    trunk.position = new BABYLON.Vector3(x,1,z);
+    const trunkMat = new BABYLON.StandardMaterial("trunkMat",scene);
+    trunkMat.diffuseColor = new BABYLON.Color3(0.4,0.25,0.1);
+    trunk.material = trunkMat;
+
+    const leaves = BABYLON.MeshBuilder.CreateSphere("leaves",{diameter:2},scene);
+    leaves.position = new BABYLON.Vector3(x,2.8,z);
+    const leavesMat = new BABYLON.StandardMaterial("leavesMat",scene);
+    leavesMat.diffuseColor = new BABYLON.Color3(0.1,0.5,0.1);
+    leaves.material = leavesMat;
+
+    treeMeshes.push(trunk, leaves);
+  }
+  for(let i=0; i<20; i++){
+    createTree(-7, i*10 + 5);
+    createTree(7, i*10 + 7);
+  }
+
+  // Traffic (a pár autó ami előre halad)
+  const traffic = [];
+  function spawnTraffic(){
+    for(let i=0;i<10;i++){
+      const t = BABYLON.MeshBuilder.CreateBox('t'+i,{width:1.6,height:0.6,depth:3},scene);
+      t.position = new BABYLON.Vector3((Math.random()*10-5),0.6, 40 + Math.random()*300);
+      t.rotation.y = 0;
+      const tm = new BABYLON.StandardMaterial('tm'+i,scene);
+      tm.diffuseColor = new BABYLON.Color3(Math.random()*0.7,Math.random()*0.7,Math.random()*0.7);
+      t.material = tm;
+      t.metadata = {speed: 0.5 + Math.random()*1.2};
+      traffic.push(t);
+    }
+  }
+  spawnTraffic();
+
+  // Thief (a piros cél-autó)
+  let thief = BABYLON.MeshBuilder.CreateBox('thief',{width:1.8,height:0.7,depth:3.3},scene);
+  thief.position = new BABYLON.Vector3(0,0.7, 100 + Math.random()*200);
+  const thMat = new BABYLON.StandardMaterial('thm',scene); thMat.diffuseColor = new BABYLON.Color3(0.8,0.1,0.1);
+  thief.material = thMat;
+
+  // Skybox-like simple effect
+  const skybox = BABYLON.MeshBuilder.CreateBox("skyBox",{size:1000.0},scene);
+  const skyMat = new BABYLON.StandardMaterial("skyMat", scene);
+  skyMat.backFaceCulling = false;
+  skyMat.diffuseColor = new BABYLON.Color3(0.6,0.8,1);
+  skyMat.specularColor = new BABYLON.Color3(0,0,0);
+  skybox.material = skyMat;
+
+  // Controls
+  scene.actionManager = new BABYLON.ActionManager(scene);
+  scene.onKeyboardObservable.add((kbInfo) => {
+    const key = kbInfo.event.key.toLowerCase();
+    if(kbInfo.type === BABYLON.KeyboardEventTypes.KEYDOWN) inputMap[key] = true;
+    if(kbInfo.type === BABYLON.KeyboardEventTypes.KEYUP) inputMap[key] = false;
+  });
+
+  // Follow camera position update
+  engine.runRenderLoop(() => {
+    // movement logic
+    const accel = (inputMap['arrowup'] || inputMap['w']) ? 0.06 : 0;
+    const brake = (inputMap['arrowdown'] || inputMap['s']) ? 0.12 : 0;
+    speed += accel;
+    speed -= brake;
+    speed = Math.max(0, Math.min(2.4, speed)); // clamp
+    speedDisplay.textContent = Math.round(speed*100);
+
+    // steering
+    if(inputMap['arrowleft'] || inputMap['a']) player.rotation.y -= 0.03 * (1 + speed);
+    if(inputMap['arrowright'] || inputMap['d']) player.rotation.y += 0.03 * (1 + speed);
+
+    // forward vector
+    const forward = new BABYLON.Vector3(Math.sin(player.rotation.y),0,Math.cos(player.rotation.y));
+    player.position.addInPlace(forward.scale(speed*1.8));
+
+    // move camera to follow
+    const camTarget = player.position.add(new BABYLON.Vector3(0,2,6).rotateByQuaternionToRef(BABYLON.Quaternion.FromEulerAngles(0,player.rotation.y,0), new BABYLON.Vector3()));
+    camera.position = player.position.add(new BABYLON.Vector3(0,4,-10).rotateByQuaternionToRef(BABYLON.Quaternion.FromEulerAngles(0,player.rotation.y,0), new BABYLON.Vector3()));
+    camera.setTarget(player.position.add(new BABYLON.Vector3(0,1.2,4)));
+
+    // move traffic towards negative z (toward player)
+    traffic.forEach(t=>{
+      t.position.z -= t.metadata.speed + speed*0.2;
+      if(t.position.z < -20){
+        t.position.z = 40 + Math.random()*300;
+        t.position.x = Math.random()*12-6;
+      }
+    });
+
+    // thief moves away slowly so you have to chase
+    thief.position.z -= 0.6 + Math.random()*0.3 - speed*0.1;
+    thief.position.x += Math.sin(Date.now()/500 + thief.position.z)*0.01;
+
+    // respawn thief if behind
+    if(thief.position.z < player.position.z - 30){
+      thief.position.z = player.position.z + 200 + Math.random()*200;
+      thief.position.x = Math.random()*8-4;
+    }
+
+    // check catch
+    const dist = BABYLON.Vector3.Distance(player.position, thief.position);
+    if(dist < 6){
+      score += 1;
+      scoreEl.textContent = score;
+      // teleport thief forward
+      thief.position.z = player.position.z + 200 + Math.random()*200;
+      thief.position.x = Math.random()*8-4;
+      // small visual feedback
+      const flash = BABYLON.MeshBuilder.CreateSphere('flash',{diameter:4},scene);
+      flash.position = player.position.add(new BABYLON.Vector3(0,1.6,2));
+      const fm = new BABYLON.StandardMaterial('fm',scene); fm.emissiveColor = new BABYLON.Color3(1,0.8,0.2);
+      flash.material = fm;
+      setTimeout(()=>{ flash.dispose(); }, 400);
+    }
+
+    scene.render();
+  });
+
+  window.addEventListener('resize', () => engine.resize());
+}
+
+/* End of script */
+</script>
 </body>
 </html>
